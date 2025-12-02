@@ -13,5 +13,8 @@ string[] lines = File.ReadAllLines(EXAMPLE_FILE_PATH);
 
 foreach (string line in lines)
 {
-    Console.WriteLine(line);
+    char rotationType = line[0];
+    string rotateString = new(line.Where(char.IsDigit).ToArray());
+    int rotationAngle = int.Parse(rotateString);
+    Console.WriteLine($"{rotationType} {rotationAngle}");
 }
