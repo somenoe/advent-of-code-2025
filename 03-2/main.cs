@@ -6,36 +6,39 @@ if (args.Length > 0 && args[0] == "i") selectedFile = INPUT_FILE_PATH;
 
 string[] lines = File.ReadAllLines(selectedFile);
 
-int totalOutputJoltage = 0;
+long totalOutputJoltage = 0;
 
 int[][] joltageRatings = lines.Select(line => line.Select(c => int.Parse(c.ToString())).ToArray()).ToArray();
 
+const int BATTERIES_LENGTH = 12;
 foreach (int[] line in joltageRatings)
 {
-    int first = 0;
-    int second = 0;
+    int[] batteries = new int[BATTERIES_LENGTH];
 
-    for (int i = 0; i < line.Length - 1; i++)
+    for (int i = 0; i < line.Length; i++)
     {
         int currentJoltage = line[i];
-        if (currentJoltage > first)
+        bool isFoundNewLargest = false;
+        int startCheckingBatteriesIndex = (line.Length - i) > BATTERIES_LENGTH ? 0 : BATTERIES_LENGTH - (line.Length - i);
+        for (int j = startCheckingBatteriesIndex; j < batteries.Length; j++)
         {
-            first = currentJoltage;
-            second = 0;
-        }
-        else if (currentJoltage > second)
-        {
-            second = currentJoltage;
+            if (isFoundNewLargest)
+            {
+                batteries[j] = 0;
+                continue;
+            }
+            if (currentJoltage > batteries[j])
+            {
+                batteries[j] = currentJoltage;
+                isFoundNewLargest = true;
+            }
         }
 
     }
-    if (line[^1] > second)
-    {
-        second = line[^1];
-    }
-    Console.WriteLine($"{string.Join("", line)} - {first} {second}");
 
-    totalOutputJoltage += first * 10 + second;
+    Console.WriteLine($"{string.Join("", line)} - {string.Join("", batteries)}");
+
+    totalOutputJoltage += long.Parse(string.Join("", batteries));
 }
 
 Console.WriteLine($"Total output Joltage: {totalOutputJoltage}");
