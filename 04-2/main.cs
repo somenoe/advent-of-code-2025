@@ -7,41 +7,56 @@ if (args.Length > 0 && args[0] == "i") selectedFile = INPUT_FILE_PATH;
 string[] lines = File.ReadAllLines(selectedFile);
 char[][] diagram = lines.Select(line => line.ToCharArray()).ToArray();
 
-int accessiblePaperRollCounter = 0;
 const char PAPER_ROLL_SYMBOL = '@';
 
-for (int row = 0; row < diagram.Length; row++)
+int totalAccessiblePaperRollCounter = 0;
+int accessiblePaperRollCounter = 1;
+char[][] temporaryDiagram = diagram;
+
+while (accessiblePaperRollCounter > 0)
 {
-    for (int column = 0; column < diagram[row].Length; column++)
+    accessiblePaperRollCounter = 0;
+
+    for (int row = 0; row < diagram.Length; row++)
     {
-        if (diagram[row][column] != PAPER_ROLL_SYMBOL)
+        for (int column = 0; column < diagram[row].Length; column++)
         {
-            Console.Write("_");
-            continue;
+            if (diagram[row][column] != PAPER_ROLL_SYMBOL)
+            {
+                Console.Write("_");
+                continue;
+            }
+
+            int adjacentPaperRollCounter = 0;
+            bool isFirstRow = 0 == row;
+            bool isFirstColumn = 0 == column;
+            bool isLastRow = diagram.Length - 1 == row;
+            bool isLastColumn = diagram[row].Length - 1 == column;
+
+            if (!isFirstRow && !isFirstColumn && diagram[row - 1][column - 1] == PAPER_ROLL_SYMBOL) adjacentPaperRollCounter++;
+            if (!isFirstRow && diagram[row - 1][column] == PAPER_ROLL_SYMBOL) adjacentPaperRollCounter++;
+            if (!isFirstRow && !isLastColumn && diagram[row - 1][column + 1] == PAPER_ROLL_SYMBOL) adjacentPaperRollCounter++;
+
+            if (!isFirstColumn && diagram[row][column - 1] == PAPER_ROLL_SYMBOL) adjacentPaperRollCounter++;
+            if (!isLastColumn && diagram[row][column + 1] == PAPER_ROLL_SYMBOL) adjacentPaperRollCounter++;
+
+            if (!isLastRow && !isFirstColumn && diagram[row + 1][column - 1] == PAPER_ROLL_SYMBOL) adjacentPaperRollCounter++;
+            if (!isLastRow && diagram[row + 1][column] == PAPER_ROLL_SYMBOL) adjacentPaperRollCounter++;
+            if (!isLastRow && !isLastColumn && diagram[row + 1][column + 1] == PAPER_ROLL_SYMBOL) adjacentPaperRollCounter++;
+
+            if (adjacentPaperRollCounter < 4)
+            {
+                accessiblePaperRollCounter++;
+                temporaryDiagram[row][column] = '.';
+            }
+
+            Console.Write(adjacentPaperRollCounter);
         }
-
-        int adjacentPaperRollCounter = 0;
-        bool isFirstRow = 0 == row;
-        bool isFirstColumn = 0 == column;
-        bool isLastRow = diagram.Length - 1 == row;
-        bool isLastColumn = diagram[row].Length - 1 == column;
-
-        if (!isFirstRow && !isFirstColumn && diagram[row - 1][column - 1] == PAPER_ROLL_SYMBOL) adjacentPaperRollCounter++;
-        if (!isFirstRow && diagram[row - 1][column] == PAPER_ROLL_SYMBOL) adjacentPaperRollCounter++;
-        if (!isFirstRow && !isLastColumn && diagram[row - 1][column + 1] == PAPER_ROLL_SYMBOL) adjacentPaperRollCounter++;
-
-        if (!isFirstColumn && diagram[row][column - 1] == PAPER_ROLL_SYMBOL) adjacentPaperRollCounter++;
-        if (!isLastColumn && diagram[row][column + 1] == PAPER_ROLL_SYMBOL) adjacentPaperRollCounter++;
-
-        if (!isLastRow && !isFirstColumn && diagram[row + 1][column - 1] == PAPER_ROLL_SYMBOL) adjacentPaperRollCounter++;
-        if (!isLastRow && diagram[row + 1][column] == PAPER_ROLL_SYMBOL) adjacentPaperRollCounter++;
-        if (!isLastRow && !isLastColumn && diagram[row + 1][column + 1] == PAPER_ROLL_SYMBOL) adjacentPaperRollCounter++;
-
-        if (adjacentPaperRollCounter < 4) accessiblePaperRollCounter++;
-
-        Console.Write(adjacentPaperRollCounter);
+        Console.WriteLine();
     }
-    Console.WriteLine();
+
+    diagram = temporaryDiagram;
+    totalAccessiblePaperRollCounter += accessiblePaperRollCounter;
 }
 
-Console.WriteLine($"\nAccessible Paper Rolls: {accessiblePaperRollCounter}");
+Console.WriteLine($"\nTotal Accessible Paper Rolls: {totalAccessiblePaperRollCounter}");
