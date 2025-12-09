@@ -1,236 +1,228 @@
 const DEBUG = true;
 
-function print(...param: any) {
-  console.log(...param);
-}
-function debug(...param: any) {
-  if (DEBUG) print(...param);
-}
+const print = (...param: any): void => console.log(...param);
+const debug = (...param: any): void => DEBUG && print(...param);
 
-const inputFilePath = Bun.argv[2] == "i" ? "input.txt" : "example.txt";
-const input = Bun.file(inputFilePath);
+const getInputPath = (arg: string): string =>
+  arg === "i" ? "input.txt" : "example.txt";
 
-const content = await input.text();
-const lines = content.split(/\r?\n/).filter((l) => l.trim() !== "");
+const parseLines = (content: string): string[] =>
+  content.split(/\r?\n/).filter((l) => l.trim() !== "");
 
-debug(`Loading ${inputFilePath}, ${lines.length} red tiles`);
-
-// Parse red tile positions (polygon vertices)
-const redTiles: { x: number; y: number }[] = lines.map((line) => {
-  const [x, y] = line.split(",");
-  return { x: parseInt(x!), y: parseInt(y!) };
-});
-
-debug(`Parsed ${redTiles.length} red tiles`);
-
-// Build edges of the polygon (horizontal and vertical segments)
-type Edge = {
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-  isHorizontal: boolean;
-  minX: number;
-  maxX: number;
-  minY: number;
-  maxY: number;
+const parseTile = (line: string): { x: number; y: number } => {
+  const [x, y] = line.split(",").map(Number);
+  return { x: x!, y: y! };
 };
-const edges: Edge[] = [];
 
-for (let i = 0; i < redTiles.length; i++) {
-  const curr = redTiles[i]!;
-  const next = redTiles[(i + 1) % redTiles.length]!;
-  const isHorizontal = curr.y === next.y;
-  edges.push({
-    x1: curr.x,
-    y1: curr.y,
-    x2: next.x,
-    y2: next.y,
-    isHorizontal,
-    minX: Math.min(curr.x, next.x),
-    maxX: Math.max(curr.x, next.x),
-    minY: Math.min(curr.y, next.y),
-    maxY: Math.max(curr.y, next.y),
+const main = async (): Promise<void> => {
+  const inputFilePath = getInputPath(Bun.argv[2] ?? "e");
+  const input = Bun.file(inputFilePath);
+  const content = await input.text();
+  const lines = parseLines(content);
+
+  debug(`Loading ${inputFilePath}, ${lines.length} red tiles`);
+
+  const redTiles: { x: number; y: number }[] = lines.map(parseTile);
+
+  debug(`Parsed ${redTiles.length} red tiles`);
+
+  type Edge = {
+    p1: { x: number; y: number };
+    p2: { x: number; y: number };
+    isHorizontal: boolean;
+  };
+
+  const buildEdge = (
+    curr: { x: number; y: number },
+    next: { x: number; y: number }
+  ): Edge => ({
+    p1: curr,
+    p2: next,
+    isHorizontal: curr.y === next.y,
   });
-}
 
-debug(`Built ${edges.length} edges`);
+  const getEdgeBounds = (edge: Edge) => ({
+    minX: Math.min(edge.p1.x, edge.p2.x),
+    maxX: Math.max(edge.p1.x, edge.p2.x),
+    minY: Math.min(edge.p1.y, edge.p2.y),
+    maxY: Math.max(edge.p1.y, edge.p2.y),
+  });
 
-// Point-in-polygon using ray casting (cached)
-const insideCache = new Map<string, boolean>();
-
-function isOnEdge(px: number, py: number): boolean {
-  for (const edge of edges) {
-    if (edge.isHorizontal && py === edge.y1) {
-      if (px >= edge.minX && px <= edge.maxX) return true;
-    } else if (!edge.isHorizontal && px === edge.x1) {
-      if (py >= edge.minY && py <= edge.maxY) return true;
-    }
-  }
-  return false;
-}
-
-function isStrictlyInsidePolygon(px: number, py: number): boolean {
-  let inside = false;
-  for (const edge of edges) {
-    const { x1, y1, x2, y2 } = edge;
-    if (y1 > py !== y2 > py) {
-      const xIntersect = x1 + ((py - y1) / (y2 - y1)) * (x2 - x1);
-      if (px < xIntersect) {
-        inside = !inside;
-      }
-    }
-  }
-  return inside;
-}
-
-function isInsideOrOnPolygon(px: number, py: number): boolean {
-  const k = `${px},${py}`;
-  if (insideCache.has(k)) return insideCache.get(k)!;
-
-  const result = isOnEdge(px, py) || isStrictlyInsidePolygon(px, py);
-  insideCache.set(k, result);
-  return result;
-}
-
-// Check if rectangle is fully inside polygon
-// We need to check all 4 edges of the rectangle against all polygon edges
-function isRectangleValid(
-  left: number,
-  top: number,
-  right: number,
-  bottom: number
-): boolean {
-  // Check all 4 corners
-  if (!isInsideOrOnPolygon(left, top)) return false;
-  if (!isInsideOrOnPolygon(right, top)) return false;
-  if (!isInsideOrOnPolygon(left, bottom)) return false;
-  if (!isInsideOrOnPolygon(right, bottom)) return false;
-
-  // For each polygon edge, check if it "cuts" through our rectangle
-  // causing some parts to be outside
-  for (const edge of edges) {
-    if (edge.isHorizontal) {
-      const edgeY = edge.y1;
-      // Check if this horizontal edge is strictly inside the rectangle's Y range
-      if (edgeY > top && edgeY < bottom) {
-        // Check if edge overlaps with rectangle's X range
-        if (edge.maxX > left && edge.minX < right) {
-          // This edge cuts through - check points along the rectangle's left and right borders at this Y
-          if (!isInsideOrOnPolygon(left, edgeY)) return false;
-          if (!isInsideOrOnPolygon(right, edgeY)) return false;
-
-          // Also check points just above and below the edge within the rectangle
-          if (edgeY - 1 > top && !isInsideOrOnPolygon(left, edgeY - 1))
-            return false;
-          if (edgeY + 1 < bottom && !isInsideOrOnPolygon(left, edgeY + 1))
-            return false;
-          if (edgeY - 1 > top && !isInsideOrOnPolygon(right, edgeY - 1))
-            return false;
-          if (edgeY + 1 < bottom && !isInsideOrOnPolygon(right, edgeY + 1))
-            return false;
-
-          // Check midpoint
-          const midX = Math.floor(
-            (Math.max(left, edge.minX) + Math.min(right, edge.maxX)) / 2
-          );
-          if (midX > left && midX < right) {
-            if (edgeY - 1 > top && !isInsideOrOnPolygon(midX, edgeY - 1))
-              return false;
-            if (edgeY + 1 < bottom && !isInsideOrOnPolygon(midX, edgeY + 1))
-              return false;
-          }
-        }
-      }
-    } else {
-      const edgeX = edge.x1;
-      // Check if this vertical edge is strictly inside the rectangle's X range
-      if (edgeX > left && edgeX < right) {
-        // Check if edge overlaps with rectangle's Y range
-        if (edge.maxY > top && edge.minY < bottom) {
-          // This edge cuts through - check points along the rectangle's top and bottom borders at this X
-          if (!isInsideOrOnPolygon(edgeX, top)) return false;
-          if (!isInsideOrOnPolygon(edgeX, bottom)) return false;
-
-          // Also check points just left and right of the edge within the rectangle
-          if (edgeX - 1 > left && !isInsideOrOnPolygon(edgeX - 1, top))
-            return false;
-          if (edgeX + 1 < right && !isInsideOrOnPolygon(edgeX + 1, top))
-            return false;
-          if (edgeX - 1 > left && !isInsideOrOnPolygon(edgeX - 1, bottom))
-            return false;
-          if (edgeX + 1 < right && !isInsideOrOnPolygon(edgeX + 1, bottom))
-            return false;
-
-          // Check midpoint
-          const midY = Math.floor(
-            (Math.max(top, edge.minY) + Math.min(bottom, edge.maxY)) / 2
-          );
-          if (midY > top && midY < bottom) {
-            if (edgeX - 1 > left && !isInsideOrOnPolygon(edgeX - 1, midY))
-              return false;
-            if (edgeX + 1 < right && !isInsideOrOnPolygon(edgeX + 1, midY))
-              return false;
-          }
-        }
-      }
-    }
-  }
-
-  return true;
-}
-
-// Build pairs sorted by area descending
-const pairs: { i: number; j: number; area: number }[] = [];
-for (let i = 0; i < redTiles.length; i++) {
-  const a = redTiles[i]!;
-  for (let j = i + 1; j < redTiles.length; j++) {
-    const b = redTiles[j]!;
-    if (a.x === b.x || a.y === b.y) continue;
-    const width = Math.abs(a.x - b.x) + 1;
-    const height = Math.abs(a.y - b.y) + 1;
-    pairs.push({ i, j, area: width * height });
-  }
-}
-pairs.sort((a, b) => b.area - a.area);
-
-debug(`Checking ${pairs.length} rectangle pairs (sorted by area desc)...`);
-
-// Process pairs
-let biggestArea = 0;
-let bestRect: {
-  a: { x: number; y: number };
-  b: { x: number; y: number };
-} | null = null;
-let checked = 0;
-
-for (const pair of pairs) {
-  if (pair.area <= biggestArea) break;
-
-  checked++;
-  if (checked % 10000 === 0) {
-    debug(`Checked ${checked}/${pairs.length}, best: ${biggestArea}`);
-  }
-
-  const a = redTiles[pair.i]!;
-  const b = redTiles[pair.j]!;
-  const left = Math.min(a.x, b.x);
-  const right = Math.max(a.x, b.x);
-  const top = Math.min(a.y, b.y);
-  const bottom = Math.max(a.y, b.y);
-
-  if (isRectangleValid(left, top, right, bottom)) {
-    biggestArea = pair.area;
-    bestRect = { a, b };
-    debug(
-      `Found valid rectangle: (${a.x},${a.y}) to (${b.x},${b.y}), area=${pair.area}`
-    );
-  }
-}
-
-print({ biggestArea });
-if (bestRect) {
-  debug(
-    `Best rectangle corners: (${bestRect.a.x},${bestRect.a.y}) to (${bestRect.b.x},${bestRect.b.y})`
+  const edges: Edge[] = redTiles.map((curr, i) =>
+    buildEdge(curr, redTiles[(i + 1) % redTiles.length]!)
   );
-}
+
+  debug(`Built ${edges.length} edges`);
+
+  const isOnEdge = (px: number, py: number): boolean =>
+    edges.some((edge) => {
+      if (edge.isHorizontal && py === edge.p1.y) {
+        const { minX, maxX } = getEdgeBounds(edge);
+        return px >= minX && px <= maxX;
+      } else if (!edge.isHorizontal && px === edge.p1.x) {
+        const { minY, maxY } = getEdgeBounds(edge);
+        return py >= minY && py <= maxY;
+      }
+      return false;
+    });
+
+  const isStrictlyInsidePolygon = (px: number, py: number): boolean =>
+    edges.reduce((inside, edge) => {
+      const { x: x1, y: y1 } = edge.p1;
+      const { x: x2, y: y2 } = edge.p2;
+      if (y1 > py !== y2 > py) {
+        const xIntersect = x1 + ((py - y1) / (y2 - y1)) * (x2 - x1);
+        return px < xIntersect ? !inside : inside;
+      }
+      return inside;
+    }, false);
+
+  const insideCache = new Map<string, boolean>();
+  const cacheKey = (x: number, y: number): string => `${x},${y}`;
+
+  const isInsideOrOnPolygon = (px: number, py: number): boolean => {
+    const k = cacheKey(px, py);
+    if (insideCache.has(k)) return insideCache.get(k)!;
+    const result = isOnEdge(px, py) || isStrictlyInsidePolygon(px, py);
+    insideCache.set(k, result);
+    return result;
+  };
+
+  const checkCornersValid = (
+    left: number,
+    top: number,
+    right: number,
+    bottom: number
+  ): boolean =>
+    [
+      isInsideOrOnPolygon(left, top),
+      isInsideOrOnPolygon(right, top),
+      isInsideOrOnPolygon(left, bottom),
+      isInsideOrOnPolygon(right, bottom),
+    ].every(Boolean);
+
+  const checkEdge = (
+    edge: Edge,
+    left: number,
+    top: number,
+    right: number,
+    bottom: number
+  ): boolean => {
+    const { minX, maxX, minY, maxY } = getEdgeBounds(edge);
+    if (edge.isHorizontal) {
+      const edgeY = edge.p1.y;
+      if (edgeY <= top || edgeY >= bottom) return true;
+      if (maxX <= left || minX >= right) return true;
+      const checks: boolean[] = [
+        isInsideOrOnPolygon(left, edgeY),
+        isInsideOrOnPolygon(right, edgeY),
+      ];
+      if (edgeY - 1 > top) {
+        checks.push(
+          isInsideOrOnPolygon(left, edgeY - 1),
+          isInsideOrOnPolygon(right, edgeY - 1)
+        );
+      }
+      if (edgeY + 1 < bottom) {
+        checks.push(
+          isInsideOrOnPolygon(left, edgeY + 1),
+          isInsideOrOnPolygon(right, edgeY + 1)
+        );
+      }
+      const midX = Math.floor(
+        (Math.max(left, minX) + Math.min(right, maxX)) / 2
+      );
+      if (midX > left && midX < right) {
+        if (edgeY - 1 > top) checks.push(isInsideOrOnPolygon(midX, edgeY - 1));
+        if (edgeY + 1 < bottom)
+          checks.push(isInsideOrOnPolygon(midX, edgeY + 1));
+      }
+      return checks.every(Boolean);
+    } else {
+      const edgeX = edge.p1.x;
+      if (edgeX <= left || edgeX >= right) return true;
+      if (maxY <= top || minY >= bottom) return true;
+      const checks: boolean[] = [
+        isInsideOrOnPolygon(edgeX, top),
+        isInsideOrOnPolygon(edgeX, bottom),
+      ];
+      if (edgeX - 1 > left) {
+        checks.push(
+          isInsideOrOnPolygon(edgeX - 1, top),
+          isInsideOrOnPolygon(edgeX - 1, bottom)
+        );
+      }
+      if (edgeX + 1 < right) {
+        checks.push(
+          isInsideOrOnPolygon(edgeX + 1, top),
+          isInsideOrOnPolygon(edgeX + 1, bottom)
+        );
+      }
+      const midY = Math.floor(
+        (Math.max(top, minY) + Math.min(bottom, maxY)) / 2
+      );
+      if (midY > top && midY < bottom) {
+        if (edgeX - 1 > left) checks.push(isInsideOrOnPolygon(edgeX - 1, midY));
+        if (edgeX + 1 < right)
+          checks.push(isInsideOrOnPolygon(edgeX + 1, midY));
+      }
+      return checks.every(Boolean);
+    }
+  };
+
+  const isRectangleValid = (
+    left: number,
+    top: number,
+    right: number,
+    bottom: number
+  ): boolean =>
+    checkCornersValid(left, top, right, bottom) &&
+    edges.every((edge) => checkEdge(edge, left, top, right, bottom));
+
+  const generatePairs = (): { i: number; j: number; area: number }[] => {
+    const pairs: { i: number; j: number; area: number }[] = [];
+    for (let i = 0; i < redTiles.length; i++) {
+      const a = redTiles[i]!;
+      for (let j = i + 1; j < redTiles.length; j++) {
+        const b = redTiles[j]!;
+        if (a.x !== b.x && a.y !== b.y) {
+          const width = Math.abs(a.x - b.x) + 1;
+          const height = Math.abs(a.y - b.y) + 1;
+          pairs.push({ i, j, area: width * height });
+        }
+      }
+    }
+    return pairs.sort((a, b) => b.area - a.area);
+  };
+
+  const pairs = generatePairs();
+
+  debug(`Checking ${pairs.length} rectangle pairs (sorted by area desc)...`);
+
+  let biggestArea = 0;
+  for (let index = 0; index < pairs.length; index++) {
+    if (pairs[index]!.area <= biggestArea) {
+      break;
+    }
+
+    const pair = pairs[index]!;
+
+    const a = redTiles[pair.i]!;
+    const b = redTiles[pair.j]!;
+
+    const left = Math.min(a.x, b.x);
+    const right = Math.max(a.x, b.x);
+    const top = Math.min(a.y, b.y);
+    const bottom = Math.max(a.y, b.y);
+
+    if (isRectangleValid(left, top, right, bottom)) {
+      debug(
+        `Found valid rectangle: (${a.x},${a.y}) to (${b.x},${b.y}), area=${pair.area}`
+      );
+      biggestArea = pair.area;
+    }
+  }
+  print({ biggestArea });
+};
+
+main();
