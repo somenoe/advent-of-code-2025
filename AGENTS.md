@@ -1,13 +1,3 @@
-# Advent of Code 2025
-
-[Advent of Code 2025](https://adventofcode.com/2025)
-
-## Prerequisites
-
-- .NET 10
-- Bun
-- g++ (for C++ solutions and the `run` script)
-
 ## How to run
 
 ### C#:
