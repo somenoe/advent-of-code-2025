@@ -9,8 +9,8 @@ function parseInput(content: string): Map<string, string[]> {
     const parts = line.split(":");
     if (parts.length !== 2) continue;
 
-    const device = parts[0].trim();
-    const outputs = parts[1]
+    const device = parts[0]!.trim();
+    const outputs = parts[1]!
       .trim()
       .split(/\s+/)
       .filter((s) => s.length > 0);
@@ -43,7 +43,7 @@ function computeReachable(
 
   let idx = 0;
   while (idx < queue.length) {
-    const current = queue[idx++];
+    const current = queue[idx++]!;
     const predecessors = reverseGraph.get(current);
     if (predecessors) {
       for (const pred of predecessors) {
@@ -129,7 +129,9 @@ function countPathsWithRequired(
 
   // Pruning: check if we can reach all missing required nodes
   for (let i = 0; i < required.length; i++) {
-    if (!foundRequired.has(required[i]) && !reachableReq[i].has(current)) {
+    const req = required[i]!;
+    const reqReach = reachableReq[i]!;
+    if (!foundRequired.has(req) && !reqReach.has(current)) {
       if (isRequired) {
         foundRequired.delete(current);
       }
@@ -140,7 +142,8 @@ function countPathsWithRequired(
   // Create a bitmask for foundRequired state
   let stateMask = 0;
   for (let i = 0; i < required.length; i++) {
-    if (foundRequired.has(required[i])) {
+    const req = required[i]!;
+    if (foundRequired.has(req)) {
       stateMask |= 1 << i;
     }
   }
